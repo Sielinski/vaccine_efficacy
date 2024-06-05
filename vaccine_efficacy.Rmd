@@ -4,6 +4,7 @@ author: "Ron Sielinski"
 date: "`r Sys.Date()`"
 output:
   html_document: default
+  word_document: default
   pdf_document: default
 ---
 
@@ -189,11 +190,11 @@ weekly_dat |>
 
 ```
 
-This new perspective draws attention to the fact that our model will need to accommodate for differences in population sizes. A decrease of 10,000 cases would represent a much larger change for Rhode Island than California. Each state needs its own basis to calculate the *relative* change in cases, but we also need to ensure that those relative changes are comparable: They need to be on the same scale for our model to find patterns of similarity and difference.   
+This new perspective draws attention to the fact that our model will need to accommodate for differences in population sizes. (A decrease of 10,000 cases would represent a much larger change for Rhode Island than California.) To ensure that the changes for each state are comparable, we need to put them on the same relative scale.    
 
-While we could use the period-over-period percentage change in new cases, simple percentages  over-emphasize increases. Consider the fact that, while it's possible for increases to exceed 100%, it's *never* possible for decreases to exceed 100%. 
+We could calculate the change in new cases as a percentage, but the resulting increases and decreases would not be symmetric. If you increase a number by 50% then decrease the result by 50%, you don't end up with the original number: You end up with 3/4 of the original number. Similarly, increases can exceed 100%, but decreases cannot.    
 
-A more mathematically robust solution is log returns. By taking the log of the period-over-period percentage change, we overcome the inherent bias of raw percentages. 
+A more mathematically robust solution is log returns. By taking the log of the period-over-period percentage change, we overcome the limitations of raw percentages. 
 
 ```{r log_returns}
 
@@ -224,7 +225,7 @@ weekly_dat <- weekly_dat |>
 
 A plot of the log returns (with the first few months of the pandemic removed) illustrates that using log returns serves its intended purpose: 
 
-* The *y*-axis values no longer show the number of new cases but the *relative* change in new cases
+* The *y*-axis values no longer show the number of new cases but the *relative change* in new cases
 * The *y*-axis values for each geography are now on a comparable scale 
 
 More importantly, we can now see a difference in the *y*-axis values before and after the vaccine. After the vaccine, the *y*-axis values are generally smaller in value (often near-zero), and the trend lines are generally smoother (with the notable exception of a spike near the start of 2022).    
@@ -296,7 +297,7 @@ min_class_size <- min(table(weekly_dat$post_vaccine))
 min_class_size <- min(table(weekly_dat$post_vaccine))
 
 # take a random sample of that many records from each class
-set.seed(5964)
+set.seed(99)
 idx_T <- sample(which(weekly_dat$post_vaccine == T), size = pct * min_class_size) 
 idx_F <- sample(which(weekly_dat$post_vaccine == F), size = pct * min_class_size) 
 
@@ -307,14 +308,25 @@ train_idx <- c(idx_T, idx_F)
 n <- nrow(weekly_dat)
 test_idx <- which(!(1:n %in% train_idx))
 
+# need to ensure the test dataset is balanced, too
+min_test_size <- table(weekly_dat$post_vaccine[test_idx]) |>
+  min()
+
+test_idx <- data.frame(test_idx = test_idx, 
+                       post_vaccine = weekly_dat$post_vaccine[test_idx]) |>
+  slice_sample(n = min_test_size, by = post_vaccine) |>
+  select(test_idx) |>
+  unlist()
+
 # actual size of the training set
 # length(train_idx) / n
 
 # clean up the environment
 rm(pct, min_class_size, idx_T, idx_F, n)
 
-# ensure training data set is balanced 
+# ensure training and test datasets are balanced 
 table(weekly_dat$post_vaccine[train_idx])
+table(weekly_dat$post_vaccine[test_idx])
 
 ```
 Once we have our train and test datasets, we can fit the model and evaluate its performance. 
@@ -430,9 +442,9 @@ geo_performance <- test_results |>
 
 ### Summary 
 
-To explore the relationship between the availability of COVID-19 vaccines and the change in the rate of confirmed cases in the US, this analysis uses a simple linear model to predict whether a particular week's results came *before* or *after* the general availability of vaccines. 
+To explore the relationship between the availability of COVID-19 vaccines and the change in the rate of confirmed cases in the US, this analysis uses a simple linear model to predict whether a calendar week came *before* or *after* the general availability of vaccines based on the period-over-period log returns of new cases. 
 
-There are multiple sources of bias in this analysis. Adjusting for them is beyond the scope of this paper, so it's important that identify the primary sources: 
+There are multiple sources of bias in this analysis. Adjusting for them is beyond the scope of this paper, so it's important that we identify the primary sources: 
 
 * The emphasis placed on vaccines in the design of the model implies that vaccines were the only way to reduce the infection rates of COVID-19. However, multiple measures were used throughout the pandemic: stay-at-home orders, mask mandates, and more. 
 * The model likewise fails to account for factors that undermine the efficacy of vaccines, e.g., vaccine reluctance, waning immunity, relaxation of public health measures, new variants, etc. (In fact, the performance of the model degrades near the start of 2022, which aligns with arrival of the Omicron variant.)
